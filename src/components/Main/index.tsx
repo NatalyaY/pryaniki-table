@@ -1,83 +1,107 @@
-import React, { useEffect } from 'react';
-import { useAppSelector, useAppDispatch } from '../../app/hooks';
-import { selectUser } from '../../features/user/userSlice';
-import { Form, useLoaderData } from "react-router-dom";
-import { mainLoaderData } from '../../Router';
-import { Add, selectTable, selectTableFields, setTableData, sortTable, Edit, Remove } from '../../features/table/tableSlice';
+import React, { useEffect, useState } from 'react';
+import { useAppDispatch } from '../../app/hooks';
+import { useLoaderData } from "react-router-dom";
+import { handleLoaderError, mainLoaderData } from '../../Router';
+import { setTableData } from '../../features/table/tableSlice';
 
-import ArrowDropUpIcon from '@mui/icons-material/ArrowDropUp';
-import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
-import DeleteForeverIcon from '@mui/icons-material/DeleteForever';
-import EditIcon from '@mui/icons-material/Edit';
+import { Button, CircularProgress, Container, Paper, Stack, Typography } from '@mui/material';
+
+import Header from './components/Header';
+import { SxProps } from '@mui/system';
+import Table from './components/Table';
+import PostOrEditDialog from './components/Dialogs/PostOrEditDialog';
+import { mainTableData } from './../../Router';
+import { useNavigate } from "react-router-dom";
+import { ErrorBoundaryClass } from '../Error';
+
 
 const App: React.FC = () => {
     const dispatch = useAppDispatch();
+    const navigate = useNavigate();
 
-    const user = useAppSelector(selectUser);
+    const [postDialogOpen, setPostDialogOpen] = useState(false);
+    const handleDeleteDialogClose = () => setPostDialogOpen(false);
+    const [loadedTableData, setLoadedTableData] = useState<mainTableData['data'] | null>(null);
+    const [tableDataLoading, setTableDataLoading] = useState(true);
 
     const loaderData = useLoaderData() as mainLoaderData;
-    let tableData = loaderData && !(loaderData instanceof Response) ? loaderData.table.data : null;
-
-    const data = useAppSelector(selectTable);
-    const tableFields = useAppSelector(selectTableFields);
 
     useEffect(() => {
-        if (tableData) {
-            dispatch(setTableData(tableData))
+        if (loadedTableData && loadedTableData.filter(Boolean).length) {
+            dispatch(setTableData(loadedTableData))
         }
-    }, [tableData, dispatch])
+    }, [loadedTableData, dispatch])
+
+    useEffect(() => {
+        if (loaderData && !(loaderData instanceof Response)) {
+            loaderData.table
+                .then(data => {
+                    if (data) {
+                        if (data.error_code === 2004) {
+                            handleLoaderError();
+                            navigate('/auth');
+                            return;
+                        }
+                        setLoadedTableData(data.data);
+                        setTableDataLoading(false);
+                    }
+                })
+                .catch(e => {
+                    if (!tableDataLoading) return;
+                    setTableDataLoading(false);
+                })
+        }
+    }, [loaderData, navigate, tableDataLoading])
+
+    const paperStyle: SxProps = {
+        height: '100%',
+        gap: 10,
+        px: {xs: 1, sm: 4},
+        py: 4,
+        alignItems: 'center',
+        borderRadius: 2,
+    };
 
     return (
-        <>
-            <header>
-                <span>{user.name}</span>
-                <Form method='post'>
-                    <input type="submit" value="Выйти" />
-                </Form>
-            </header>
-            <main>
-                {
-                    data && data.length &&
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: `repeat(${tableFields.length + 1}, minmax(max-content, 1fr))`,
-                        // gridTemplateRows: 'repeat(8, minmax(max-content, 1fr))',
-                        // gridAutoColumns: 'minmax(max-content, 1fr)',
-                        // gridAutoFlow: 'column',
-                        gap: '15px',
-                        overflowY: 'auto',
-                    }}>
+        <ErrorBoundaryClass>
+            <Header />
+            <Container component={'main'}>
+                <Paper component={Stack} elevation={0} sx={paperStyle}>
+                    <ErrorBoundaryClass>
+                        <Stack alignItems='center' gap={1} textAlign='center'>
+                            <Typography variant='h1'>
+                                Таблица данных по документам
+                            </Typography>
+                            <Typography mb={3} variant='h4' whiteSpace={{ xs: 'normal', sm: 'pre-line' }}>
+                                {`Здесь вы можете просмотреть, изменить, удалить
+                            или добавить данные о документах`}
+                            </Typography>
+                            {
+                                loadedTableData &&
+                                <Button variant='contained' onClick={() => setPostDialogOpen(true)}>
+                                    Добавить запись
+                                </Button>
+                            }
+                        </Stack>
                         {
-                            tableFields.map(k =>
-                                <div key={k}>
-                                    <span>{k}</span>
-                                    <ArrowDropUpIcon onClick={() => dispatch(sortTable({ field: k, order: 'desc' }))} />
-                                    <ArrowDropDownIcon onClick={() => dispatch(sortTable({ field: k, order: 'asc' }))} />
-                                </div>
-                            )
+                            tableDataLoading ?
+                                <CircularProgress />
+                                :
+                                <ErrorBoundaryClass>
+                                    <Table />
+                                </ErrorBoundaryClass>
                         }
-                        <span></span>
                         {
-                            data.map((p, row) =>
-                                <>
-                                    {
-                                        tableFields.map((f, i) =>
-                                            <span key={p[f] + p.id + i}>{p[f]}</span>
-                                        )
-                                    }
-                                    <div key={row}>
-                                        <EditIcon onClick={() => dispatch(Edit(p))}/>
-                                        <DeleteForeverIcon  onClick={() => dispatch(Remove(p.id))} />
-                                    </div>
-                                </>
-                            )
+                            postDialogOpen &&
+                            <PostOrEditDialog handleClose={handleDeleteDialogClose} />
                         }
-                    </div>
-                }
-                <button onClick={() => data ? dispatch(Add(data[0])) : {}}>add</button>
-            </main>
-        </>
+                    </ErrorBoundaryClass>
+                </Paper>
+            </Container>
+        </ErrorBoundaryClass>
     )
 };
 
 export default App;
+
+

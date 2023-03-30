@@ -1,9 +1,14 @@
+import { Alert, Button, Collapse, FormGroup, IconButton, InputAdornment, Paper, TextField, Typography } from '@mui/material';
+import { Stack } from '@mui/system';
 import React, { useEffect, useState } from 'react';
 import { useActionData, Form, useLoaderData } from "react-router-dom";
 import { clearState } from '../../features/clearState/clearStateSlice';
 import { setName } from '../../features/user/userSlice';
 import { authActionData, authLoaderData } from '../../Router';
 import { useAppDispatch } from './../../app/hooks';
+
+import Visibility from '@mui/icons-material/Visibility';
+import VisibilityOff from '@mui/icons-material/VisibilityOff';
 
 
 const Auth: React.FC = () => {
@@ -31,33 +36,66 @@ interface IAuthForm {
 }
 
 const AuthForm: React.FC<IAuthForm> = ({ hasError, error_text, formType, saveLogin }) => {
-    if (formType === 'login') return <Login {...{hasError, error_text, saveLogin}}  />
+    if (formType === 'login') return <Login {...{ hasError, error_text, saveLogin }} />
     return null;
 }
 
-interface ILogin extends Omit<IAuthForm, 'formType'> {}
+interface ILogin extends Omit<IAuthForm, 'formType'> { }
 
 const Login: React.FC<ILogin> = ({ hasError, error_text, saveLogin }) => {
 
     const [login, setlogin] = useState('');
     const [password, setpassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     return (
-        <Form method='post'>
-            <label>
-                Login:
-                <input type="text" name='username' value={login} onChange={(e) => {setlogin(e.target.value); saveLogin(e.target.value)}} />
-            </label>
-            <label>
-                Password:
-                <input type="text" name='password' value={password} onChange={(e) => setpassword(e.target.value)} />
-            </label>
-            <input type="submit" value="Войти" />
-            {
-                hasError &&
-                <span>{error_text ? error_text : 'Произошла ошибка, попробуйте позже'}</span>
-            }
-        </Form>
+        <Paper width='100%' component={Stack} gap={4} p={4} sx={{borderRadius: 4}} >
+            <Typography variant='h1' textAlign='center'>
+                Войдите в личный кабинет
+            </Typography>
+            <Form method='post'>
+                <FormGroup sx={{ gap: 2 }}>
+                    <TextField
+                        required
+                        name='username'
+                        label='Login:'
+                        autoComplete='username'
+                        variant='outlined'
+                        value={login}
+                        onChange={(e) => { setlogin(e.target.value); saveLogin(e.target.value) }}
+                    />
+                    <TextField
+                        required
+                        name='password'
+                        type={showPassword ? 'text' : 'password'}
+                        autoComplete='current-password'
+                        label='Password:'
+                        variant='outlined'
+                        value={password}
+                        onChange={(e) => setpassword(e.target.value)}
+                        InputProps={{
+                            endAdornment:
+                                <InputAdornment position="end">
+                                    <IconButton
+                                        aria-label="toggle password visibility"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        onMouseDown={(e) => e.preventDefault()}
+                                        edge="end"
+                                    >
+                                        {showPassword ? <VisibilityOff /> : <Visibility />}
+                                    </IconButton>
+                                </InputAdornment>
+                        }}
+                    />
+                    <Button variant='contained' type='submit'>Войти</Button>
+                    <Collapse in={hasError}>
+                        <Alert severity="error">
+                            {error_text ? error_text : 'Произошла ошибка, попробуйте позже'}
+                        </Alert>
+                    </Collapse>
+                </FormGroup>
+            </Form>
+        </Paper>
     )
 }
 

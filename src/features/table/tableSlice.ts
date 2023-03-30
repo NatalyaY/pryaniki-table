@@ -1,11 +1,11 @@
 import { createSlice, PayloadAction, createAsyncThunk } from '@reduxjs/toolkit';
 import { RootState } from '../../app/store';
-import { COOKIE_NAME, getCookie, mainLoaderData } from '../../Router';
+import { COOKIE_NAME, getCookie, mainTableData, ServerResponse } from '../../Router';
 
-
-type table = Exclude<mainLoaderData, Response>['table']['data'];
+type table = mainTableData['data'];
 type tableEntry = Omit<table[number], 'id'>;
-type postResponce = Omit<Exclude<mainLoaderData, Response>['table'], 'data'> & { data: table[number] };
+export type PostErrors = { [key in keyof table[number]]: string[] };
+type postResponce = { errors?: PostErrors, data?: table[number] };
 
 const visibleFields = [
     'companySigDate' as const,
@@ -22,7 +22,10 @@ export interface TableState {
     data?: table,
     visibleFields: typeof visibleFields,
     status: 'loading' | 'iddle',
-    error?: string
+    error?: string,
+    postErrors?: PostErrors,
+    deleteError?: string,
+    editErrors?: PostErrors
 }
 
 const initialState: TableState = {
@@ -34,17 +37,17 @@ export const Add = createAsyncThunk<
     table[number],
     tableEntry,
     {
-        rejectValue: { message: string }
+        rejectValue: { errors?: PostErrors, error?: string }
     }
 >('table/add', async (item, { rejectWithValue }) => {
     try {
         const url = process.env.REACT_APP_POST_URL;
         const userCookie = getCookie(COOKIE_NAME);
 
-        if (!url) return rejectWithValue({ message: 'process.env unavailable' });
+        if (!url) return rejectWithValue({ error: 'process.env unavailable' });
         if (!userCookie) {
             window.location.href = '/auth';
-            return rejectWithValue({ message: 'Необходима авторизация' });
+            return rejectWithValue({ error: 'Необходима авторизация' });
         };
         const response = await fetch(url, {
             method: 'POST',
@@ -55,13 +58,13 @@ export const Add = createAsyncThunk<
             body: JSON.stringify(item)
         });
         const responseData = await response.json() as postResponce;
-        if (responseData.error_code) {
-            return rejectWithValue({ message: responseData.error_text || 'Непредвиденная ошибка' })
+        if (!response.ok || responseData.errors || !responseData.data) {
+            return rejectWithValue({ errors: responseData.errors })
         } else {
             return responseData.data;
         };
     } catch (err) {
-        return rejectWithValue({ message: (err as Error).message })
+        return rejectWithValue({ error: (err as Error).message })
     };
 });
 
@@ -88,8 +91,8 @@ export const Remove = createAsyncThunk<
                 'x-auth': userCookie
             },
         });
-        const responseData = await response.json() as Omit<postResponce, "data">;
-        if (responseData.error_code) {
+        const responseData = await response.json() as Required<ServerResponse>;
+        if (responseData.error_code !== 0) {
             return rejectWithValue({ message: responseData.error_text || 'Непредвиденная ошибка' })
         } else {
             return id;
@@ -103,7 +106,7 @@ export const Edit = createAsyncThunk<
     table[number],
     table[number],
     {
-        rejectValue: { message: string }
+        rejectValue: { errors?: PostErrors, error?: string }
     }
 >('table/edit', async (item, { rejectWithValue }) => {
     try {
@@ -111,10 +114,10 @@ export const Edit = createAsyncThunk<
         const url = process.env.REACT_APP_PUT_URL;
         const userCookie = getCookie(COOKIE_NAME);
 
-        if (!url) return rejectWithValue({ message: 'process.env unavailable' });
+        if (!url) return rejectWithValue({ error: 'process.env unavailable' });
         if (!userCookie) {
             window.location.href = '/auth';
-            return rejectWithValue({ message: 'Необходима авторизация' });
+            return rejectWithValue({ error: 'Необходима авторизация' });
         };
         const response = await fetch(url + id, {
             method: 'POST',
@@ -125,13 +128,13 @@ export const Edit = createAsyncThunk<
             body: JSON.stringify(post)
         });
         const responseData = await response.json() as postResponce;
-        if (responseData.error_code) {
-            return rejectWithValue({ message: responseData.error_text || 'Непредвиденная ошибка' })
+        if (!response.ok || responseData.errors || !responseData.data) {
+            return rejectWithValue({ errors: responseData.errors })
         } else {
             return responseData.data;
         };
     } catch (err) {
-        return rejectWithValue({ message: (err as Error).message })
+        return rejectWithValue({ error: (err as Error).message })
     };
 });
 
@@ -161,11 +164,14 @@ export const tableSlice = createSlice({
             state.status = 'iddle';
         })
             .addCase(Add.pending, (state, action) => {
-                state.status = 'loading'
+                state.status = 'loading';
+                state.postErrors = undefined;
+                state.error = undefined;
             })
             .addCase(Add.rejected, (state, action) => {
                 state.status = 'iddle';
-                state.error = action.payload?.message || action.error.message;
+                state.postErrors = action.payload?.errors;
+                state.error = action.payload?.error;
             })
             .addCase(Remove.fulfilled, (state, action) => {
                 if (state.data) {
@@ -177,11 +183,12 @@ export const tableSlice = createSlice({
                 state.status = 'iddle';
             })
             .addCase(Remove.pending, (state, action) => {
-                state.status = 'loading'
+                state.status = 'loading';
+                state.deleteError = undefined;
             })
             .addCase(Remove.rejected, (state, action) => {
                 state.status = 'iddle';
-                state.error = action.payload?.message || action.error.message;
+                state.deleteError = action.payload?.message || action.error.message;
             })
             .addCase(Edit.fulfilled, (state, action) => {
                 if (state.data) {
@@ -193,18 +200,30 @@ export const tableSlice = createSlice({
                 state.status = 'iddle';
             })
             .addCase(Edit.pending, (state, action) => {
-                state.status = 'loading'
+                state.status = 'loading';
+                state.editErrors = undefined;
+                state.error = undefined;
             })
             .addCase(Edit.rejected, (state, action) => {
                 state.status = 'iddle';
-                state.error = action.payload?.message || action.error.message;
+                state.editErrors = action.payload?.errors;
+                state.error = action.payload?.error;
             })
     },
 });
 
 export const { setTableData, sortTable } = tableSlice.actions;
-export const selectTable = (state: RootState) => state.table.data;
+export const selectTable = (state: RootState) => {
+    if (!state.table.data || !state.table.data.filter(Boolean).length) return;
+    return state.table.data.filter(Boolean)
+};
 export const selectTableFields = (state: RootState) => state.table.visibleFields;
+export const selectTableStatus = (state: RootState) => state.table.status;
+export const selectTableError = (state: RootState) => state.table.error;
+export const selectTablePostErrors = (state: RootState) => state.table.postErrors;
+export const selectTableEditErrors = (state: RootState) => state.table.editErrors;
+export const selectTableDeleteError = (state: RootState) => state.table.deleteError;
+
 
 
 export default tableSlice.reducer;
