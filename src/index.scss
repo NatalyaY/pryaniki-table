@@ -3,6 +3,26 @@
 @import '@fontsource/roboto/500.css';
 @import '@fontsource/roboto/700.css';
 
+html,
+body {
+  width: 100vw;
+  min-width: 320px;
+  height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1;
+  padding-bottom: 20px;
+}
+
+
 body {
   margin: 0;
   -webkit-font-smoothing: antialiased;

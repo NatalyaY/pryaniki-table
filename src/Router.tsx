@@ -7,15 +7,16 @@ import {
 
 import App from './components/Main';
 import Auth from './components/Auth/index';
-import ErrorComp from "./components/Error";
+import ErrorComp from "./components/NotFound";
 import Layer from './components/Layer/Layer';
+import ErrorBoundary from "./components/Error";
 
 export const COOKIE_NAME = 'user';
 
 
 export const getCookie = (name: string) => {
     const matches = document.cookie.match(new RegExp(
-        "(?:^|; )" + name.replace(/([\.$?*|{}\(\)\[\]\\\/\+^])/g, '\\$1') + "=([^;]*)"
+        "(?:^|; )" + name + "=([^;]*)"
     ));
     return matches ? decodeURIComponent(matches[1]) : undefined;
 }
@@ -28,10 +29,12 @@ export type mainLoaderData = Awaited<ReturnType<typeof mainLoader>>;
 export type authLoaderData = Awaited<ReturnType<typeof authLoader>>;
 export type authActionData = Awaited<ReturnType<typeof authAction>>;
 
-
-interface mainTableData {
-    error_code?: string;
+export interface ServerResponse {
+    error_code?: number;
     error_text?: string;
+}
+
+export interface mainTableData extends ServerResponse {
     data: {
         companySigDate: string,
         companySignatureName: string,
@@ -51,6 +54,10 @@ interface authData extends Omit<mainTableData, 'data'> {
     }
 }
 
+export const handleLoaderError = () => {
+    deleteCookie(COOKIE_NAME);
+};
+
 const mainLoader = async ({ params, request }: LoaderFunctionArgs) => {
     const SQ = getSearchParams(request);
     const url = process.env.REACT_APP_GET_URL;
@@ -61,20 +68,19 @@ const mainLoader = async ({ params, request }: LoaderFunctionArgs) => {
         return redirect('/auth');
     };
 
-    const res = await fetch(url, {
-        headers: {
-            'x-auth': userCookie
-        }
-    });
+    const controller = new AbortController();
+    request.signal.addEventListener('abort', () => controller.abort());
+    setTimeout(() => controller.abort(), 5000);
 
-    const data = await res.json() as mainTableData;
-
-    if (!res.ok || data.error_code) {
-        deleteCookie(COOKIE_NAME);
-        return redirect('/auth');
-    }
-
-    return { query: SQ, table: data };
+    return {
+        query: SQ,
+        table: fetch(url, {headers: {'x-auth': userCookie}, signal: controller.signal}).then(res => {
+            if (!res.ok) {
+                throw new Error(res.statusText);
+            };
+            return res.json() as Promise<mainTableData>;
+        })
+    };
 };
 
 const authLoader = ({ params, request }: LoaderFunctionArgs) => {
@@ -98,6 +104,7 @@ const authAction = async ({ params, request }: ActionFunctionArgs) => {
         headers: {
             "Content-Type": "application/json",
         },
+        signal: request.signal,
         body: JSON.stringify(updates)
     });
     const body = await res.json() as authData;
@@ -119,9 +126,11 @@ export default createBrowserRouter([
             return null;
         },
         element: <App />,
+        errorElement: <ErrorBoundary />
     },
     {
         element: <Layer />,
+        errorElement: <ErrorBoundary />,
         children: [
             {
                 path: '/auth',
